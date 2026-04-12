@@ -29,7 +29,11 @@ jq '. + {
 }' "$BASE" > "$DIST/chrome/manifest.json"
 
 # Build Firefox manifest
-jq '. + {
+# del(.action) removes the generic toolbar button so that
+# sidebar_action's built-in toggle icon appears instead.
+# Without this, Firefox shows the action button (which does nothing)
+# and hides the sidebar toggle — making it impossible to reopen.
+jq 'del(.action) + {
   "background": { "scripts": ["background.js"] },
   "sidebar_action": {
     "default_panel": "sidebar.html",

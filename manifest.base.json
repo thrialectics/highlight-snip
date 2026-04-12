@@ -6,8 +6,7 @@
   "permissions": [
     "contextMenus",
     "storage",
-    "activeTab",
-    "downloads"
+    "activeTab"
   ],
   "options_ui": {
     "page": "options.html",

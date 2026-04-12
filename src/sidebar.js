@@ -4,8 +4,15 @@ const sourcesList = document.getElementById("sources-list");
 const exportBtn = document.getElementById("export-btn");
 const clearBtn = document.getElementById("clear-btn");
 const settingsBtn = document.getElementById("settings-btn");
+const filenameInput = document.getElementById("filename");
 
-// Render all snips and sources from storage
+// Pre-fill with today's date. The user can edit this to whatever
+// they want — it becomes the .md filename on export.
+const today = new Date().toISOString().split("T")[0];
+filenameInput.value = `snips-${today}`;
+filenameInput.placeholder = "filename";
+
+// ── Render all snips and sources from storage ──────────────────
 function render(snips) {
   snipsContainer.innerHTML = "";
   sourcesList.innerHTML = "";
@@ -17,14 +24,16 @@ function render(snips) {
     return;
   }
 
-  // Render snips as blockquotes
+  // Build a blockquote card for each snip
   for (const snip of snips) {
     const blockquote = document.createElement("blockquote");
 
+    // ── Snip text ──
     const text = document.createElement("p");
     text.textContent = snip.text;
     blockquote.appendChild(text);
 
+    // ── Source citation ──
     const cite = document.createElement("cite");
     const link = document.createElement("a");
     link.href = snip.url;
@@ -35,10 +44,92 @@ function render(snips) {
     cite.appendChild(link);
     blockquote.appendChild(cite);
 
+    // ── Note display (shown when a saved note exists) ──
+    // This is a plain div that shows the note text. Clicking the
+    // "edit" button swaps it for the textarea.
+    const noteDisplay = document.createElement("div");
+    noteDisplay.className = "note-display";
+    noteDisplay.textContent = snip.note || "";
+    // Only show if there's actually a note saved
+    noteDisplay.hidden = !snip.note;
+    blockquote.appendChild(noteDisplay);
+
+    // ── Note editor (textarea, hidden by default) ──
+    // Appears when the user clicks "add note" or "edit".
+    // Saves on blur (click away) or Ctrl+Enter.
+    const noteEditor = document.createElement("textarea");
+    noteEditor.className = "note-editor";
+    noteEditor.placeholder = "Add a note...";
+    noteEditor.value = snip.note || "";
+    noteEditor.hidden = true; // starts hidden
+
+    // saveNote: reads the textarea value, writes it into the snip
+    // object in chrome.storage, then re-renders the display.
+    // We don't re-render the whole sidebar — just update this card
+    // and persist to storage.
+    const saveNote = async () => {
+      const newNote = noteEditor.value.trim();
+
+      // Update storage: read all snips, find this one by id, patch it
+      const { snips: allSnips = [] } = await chrome.storage.local.get("snips");
+      const target = allSnips.find((s) => s.id === snip.id);
+      if (target) {
+        target.note = newNote;
+        // .set() triggers the onChanged listener, but we also update
+        // the local display immediately so there's no flicker.
+        await chrome.storage.local.set({ snips: allSnips });
+      }
+
+      // Swap: hide editor, show display (if note is non-empty)
+      noteEditor.hidden = true;
+      noteDisplay.textContent = newNote;
+      noteDisplay.hidden = !newNote;
+
+      // Update the toggle button label
+      toggleBtn.textContent = newNote ? "edit note" : "+ note";
+    };
+
+    // Save on blur (user clicks away from the textarea)
+    noteEditor.addEventListener("blur", saveNote);
+
+    // Save on Ctrl+Enter (common keyboard shortcut for "submit")
+    noteEditor.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        // blur will fire saveNote, so we just need to remove focus
+        noteEditor.blur();
+      }
+    });
+
+    blockquote.appendChild(noteEditor);
+
+    // ── Toolbar row with the toggle button ──
+    const toolbar = document.createElement("div");
+    toolbar.className = "snip-toolbar";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "note-toggle";
+    // Label depends on whether a note already exists
+    toggleBtn.textContent = snip.note ? "edit note" : "+ note";
+
+    toggleBtn.addEventListener("click", () => {
+      // Toggle: if editor is hidden, show it and focus; if visible, save
+      if (noteEditor.hidden) {
+        noteEditor.hidden = false;
+        noteDisplay.hidden = true; // hide the display while editing
+        noteEditor.focus();
+      } else {
+        // Clicking the button while editor is open → save and close
+        noteEditor.blur(); // triggers saveNote via the blur handler
+      }
+    });
+
+    toolbar.appendChild(toggleBtn);
+    blockquote.appendChild(toolbar);
+
     snipsContainer.appendChild(blockquote);
   }
 
-  // Collect unique sources
+  // ── Collect unique sources for the footer list ──
   const seen = new Set();
   const uniqueSources = [];
   for (const snip of snips) {
@@ -62,14 +153,22 @@ function render(snips) {
   sourcesSection.hidden = false;
 }
 
-// Build markdown string from snips
+// ── Build markdown string from snips ───────────────────────────
+// Each snip becomes a blockquote. If a note exists, it appears
+// right below the blockquote as regular text (not quoted).
 function buildMarkdown(snips) {
-  const date = new Date().toISOString().split("T")[0];
-  let md = `# Highlight & Snip \u2014 ${date}\n\n`;
+  // Use whatever the user typed into the filename field as the heading
+  const name = filenameInput.value.trim() || `snips-${new Date().toISOString().split("T")[0]}`;
+  let md = `# ${name}\n\n`;
 
   for (const snip of snips) {
     const title = snip.title || snip.url;
     md += `> ${snip.text}\n>\n> \u2014 [${title}](${snip.url})\n\n`;
+
+    // Append the note as plain text if it exists
+    if (snip.note) {
+      md += `**Note:** ${snip.note}\n\n`;
+    }
   }
 
   // Deduplicated sources
@@ -91,28 +190,52 @@ function buildMarkdown(snips) {
   return md;
 }
 
-// Download markdown file via chrome.downloads API
-async function downloadMarkdown(snips) {
+// ── Download markdown file ──────────────────────────────────────
+// Uses a temporary <a> tag with the `download` attribute instead of
+// the chrome.downloads API. This is plain DOM — no extension API
+// needed, works reliably in both Firefox and Chrome sidebar panels.
+function downloadMarkdown(snips) {
   const md = buildMarkdown(snips);
-  const date = new Date().toISOString().split("T")[0];
-  const { subfolder = "highlight-snip" } = await chrome.storage.local.get("subfolder");
-  const filename = `${subfolder}/snips-${date}.md`;
 
-  // Use a data URL instead of blob URL — blob URLs fail in Firefox downloads API
-  const dataUrl = "data:text/markdown;base64," + btoa(unescape(encodeURIComponent(md)));
+  // Read from the input field; fall back to date-based name if empty.
+  // Sanitize: strip characters that are illegal in filenames.
+  const raw = filenameInput.value.trim() || `snips-${new Date().toISOString().split("T")[0]}`;
+  const safeName = raw.replace(/[<>:"/\\|?*]/g, "-");
 
-  chrome.downloads.download({
-    url: dataUrl,
-    filename,
-    saveAs: false,
-  });
+  // Create a Blob (binary-large-object) from the markdown string.
+  // The Blob constructor takes an array of parts and a MIME type.
+  const blob = new Blob([md], { type: "text/markdown" });
+
+  // URL.createObjectURL() gives us a temporary browser-internal URL
+  // (blob:moz-extension://...) that points to the Blob's data in memory.
+  const url = URL.createObjectURL(blob);
+
+  // Create an invisible <a> tag, set its href to the blob URL,
+  // and set `download` to the desired filename. When we .click() it,
+  // the browser treats it as a file download with that name.
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${safeName}.md`;
+  a.click();
+
+  // Clean up: release the blob URL so the browser can free the memory.
+  // We use setTimeout because the download needs a moment to start
+  // before we revoke the URL out from under it.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// ── Button handlers ────────────────────────────────────────────
 
 // Export button
 exportBtn.addEventListener("click", async () => {
   const { snips = [] } = await chrome.storage.local.get("snips");
-  if (snips.length === 0) return;
-  await downloadMarkdown(snips);
+  if (snips.length === 0) {
+    // Brief flash on the button so the user knows "nothing to export"
+    exportBtn.textContent = "No snips yet";
+    setTimeout(() => { exportBtn.textContent = "Export .md"; }, 1500);
+    return;
+  }
+  downloadMarkdown(snips);
 });
 
 // Settings button — open extension options
@@ -126,12 +249,13 @@ clearBtn.addEventListener("click", async () => {
   render([]);
 });
 
-// Reactive updates when storage changes
+// ── Reactive updates when storage changes ──────────────────────
+// If another tab snips something, the sidebar updates live.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.snips) {
     render(changes.snips.newValue || []);
   }
 });
 
-// Initial load
+// ── Initial load ───────────────────────────────────────────────
 chrome.storage.local.get("snips").then(({ snips = [] }) => render(snips));
