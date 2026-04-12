@@ -203,6 +203,18 @@ blockquote cite a:hover {
   color: #b5daff;
 }
 
+/* Delete button — same ghost style but turns red on hover */
+.delete-btn {
+  margin-left: auto;   /* pushes it to the right edge of the toolbar */
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.delete-btn:hover {
+  color: #ff6b6b;
+}
+
 /* Textarea for writing/editing a note — Honcho-style input */
 .note-editor {
   width: 100%;

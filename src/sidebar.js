@@ -123,7 +123,24 @@ function render(snips) {
       }
     });
 
+    // ── Delete button ──
+    // Removes this single snip from storage. We don't need to manually
+    // re-render — chrome.storage.onChanged fires and render() runs
+    // automatically with the updated array.
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "note-toggle delete-btn";
+    deleteBtn.textContent = "\u00d7"; // × symbol
+
+    deleteBtn.addEventListener("click", async () => {
+      const { snips: allSnips = [] } = await chrome.storage.local.get("snips");
+      // Keep every snip except the one matching this id
+      const filtered = allSnips.filter((s) => s.id !== snip.id);
+      await chrome.storage.local.set({ snips: filtered });
+      // onChanged listener handles the re-render
+    });
+
     toolbar.appendChild(toggleBtn);
+    toolbar.appendChild(deleteBtn);
     blockquote.appendChild(toolbar);
 
     snipsContainer.appendChild(blockquote);
