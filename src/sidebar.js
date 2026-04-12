@@ -28,10 +28,48 @@ function render(snips) {
   for (const snip of snips) {
     const blockquote = document.createElement("blockquote");
 
-    // ── Snip text ──
+    // ── Snip text (display) ──
     const text = document.createElement("p");
     text.textContent = snip.text;
     blockquote.appendChild(text);
+
+    // ── Snip text editor (hidden until "edit" is clicked) ──
+    // Replaces the <p> in-place so the edit happens where the text lives.
+    const textEditor = document.createElement("textarea");
+    textEditor.className = "note-editor text-editor";
+    textEditor.value = snip.text;
+    textEditor.hidden = true;
+
+    const saveText = async () => {
+      const newText = textEditor.value.trim();
+      // Don't allow saving empty — that would make a blank snip
+      if (!newText) {
+        textEditor.value = snip.text; // revert to original
+      }
+
+      const { snips: allSnips = [] } = await chrome.storage.local.get("snips");
+      const target = allSnips.find((s) => s.id === snip.id);
+      if (target && newText) {
+        target.text = newText;
+        await chrome.storage.local.set({ snips: allSnips });
+      }
+
+      // Swap back: hide textarea, show the <p>
+      textEditor.hidden = true;
+      text.textContent = newText || snip.text;
+      text.hidden = false;
+      editBtn.textContent = "edit";
+    };
+
+    textEditor.addEventListener("blur", saveText);
+
+    textEditor.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        textEditor.blur();
+      }
+    });
+
+    blockquote.appendChild(textEditor);
 
     // ── Source citation ──
     const cite = document.createElement("cite");
@@ -139,6 +177,26 @@ function render(snips) {
       // onChanged listener handles the re-render
     });
 
+    // ── Edit snip text button ──
+    const editBtn = document.createElement("button");
+    editBtn.className = "note-toggle";
+    editBtn.textContent = "edit";
+
+    editBtn.addEventListener("click", () => {
+      if (textEditor.hidden) {
+        // Show editor, hide the <p>
+        text.hidden = true;
+        textEditor.hidden = false;
+        textEditor.value = text.textContent;
+        textEditor.focus();
+        editBtn.textContent = "save";
+      } else {
+        // Save and close — blur triggers saveText
+        textEditor.blur();
+      }
+    });
+
+    toolbar.appendChild(editBtn);
     toolbar.appendChild(toggleBtn);
     toolbar.appendChild(deleteBtn);
     blockquote.appendChild(toolbar);

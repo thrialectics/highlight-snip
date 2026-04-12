@@ -241,6 +241,14 @@ blockquote cite a:hover {
   border-color: #b5daff;
 }
 
+/* Text editor — same base style as note-editor (both classes applied)
+   but sits where the <p> was, so no top margin, and taller default. */
+.text-editor {
+  margin-top: 0;
+  min-height: 72px;
+  font-size: 14px;     /* match the body text size */
+}
+
 /* Saved note display — muted italic below the citation */
 .note-display {
   margin-top: 8px;
