@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Highlight & Snip",
+  "version": "1.0.0",
+  "description": "Highlight text on any page, snip it to a sidebar notepad, and export as markdown with sources.",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab",
+    "downloads"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "action": {
+    "default_title": "Highlight & Snip"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
